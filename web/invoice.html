@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Invoice Maker</title>
+<style>
+:root{--bg:#fff;--fg:#1c1e21;--mut:#6b7280;--card:#f6f7f9;--bd:#d9dce1;--ac:#2563eb}
+@media(prefers-color-scheme:dark){:root{--bg:#14161a;--fg:#e6e8eb;--mut:#9aa1ab;--card:#1d2026;--bd:#333842;--ac:#6ea0ff}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+main{max-width:860px;margin:0 auto;padding:16px}h1{font-size:20px;margin:0 0 4px}p.s{color:var(--mut);margin:0 0 12px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:700px){.grid{grid-template-columns:1fr}}
+input,textarea,select{font:inherit;padding:6px 8px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--fg);width:100%}
+textarea{height:80px}label{display:block;color:var(--mut);font-size:13px;margin-top:8px}
+table{width:100%;border-collapse:collapse;margin-top:12px}th{text-align:left;font-size:13px;color:var(--mut);border-bottom:2px solid var(--bd);padding:4px}td{padding:3px}
+td.n input{text-align:right}td.amt{text-align:right;white-space:nowrap;padding-right:8px}
+button{font:inherit;padding:6px 14px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--fg);cursor:pointer}button.p{background:var(--ac);color:#fff;border-color:var(--ac)}
+.tot{margin-left:auto;width:min(320px,100%);margin-top:12px}.tot div{display:flex;justify-content:space-between;padding:3px 0}.tot .g{font-weight:700;font-size:18px;border-top:2px solid var(--bd);padding-top:6px}
+.row{display:flex;gap:8px;margin:12px 0;flex-wrap:wrap}
+@media print{body{background:#fff;color:#000}button,.s,.noprint{display:none!important}input,textarea,select{border:none;background:none;color:#000;padding:0;resize:none;appearance:none}main{max-width:none}}
+</style></head><body><main>
+<h1>Invoice Maker</h1><p class="s noprint">Fill in, then Print → Save as PDF. Your data is saved in this browser only.</p>
+<div class="grid">
+<div><label>From (your name / business, address)</label><textarea id="from"></textarea>
+<label>Bill to</label><textarea id="to"></textarea></div>
+<div><label>Invoice #</label><input id="num" value="INV-001">
+<label>Issue date</label><input id="date" type="date"><label>Due date</label><input id="due" type="date">
+<label>Currency symbol</label><input id="cur" value="$" maxlength="4"></div></div>
+<table><thead><tr><th>Description</th><th style="width:80px">Qty</th><th style="width:110px">Unit price</th><th style="width:110px;text-align:right">Amount</th><th class="noprint" style="width:30px"></th></tr></thead><tbody id="items"></tbody></table>
+<div class="row noprint"><button id="add">+ Add line</button></div>
+<div class="tot"><div><span>Subtotal</span><span id="sub"></span></div>
+<div><span>Discount <input id="disc" type="number" min="0" max="100" value="0" style="width:64px;display:inline">%</span><span id="dv"></span></div>
+<div><span>Tax <input id="tax" type="number" min="0" value="0" step="0.01" style="width:70px;display:inline">%</span><span id="tv"></span></div>
+<div class="g"><span>Total</span><span id="total"></span></div></div>
+<label>Notes / payment details</label><textarea id="notes"></textarea>
+<div class="row noprint"><button class="p" onclick="window.print()">Print / Save PDF</button><button id="clear">Clear all</button></div>
+<script>
+// LOGIC-START
+function round2(x){return Math.round((x+Number.EPSILON)*100)/100;}
+function computeTotals(items,discPct,taxPct){
+  const lines=items.map(i=>round2((+i.qty||0)*(+i.price||0)));
+  const subtotal=round2(lines.reduce((a,b)=>a+b,0));
+  const discount=round2(subtotal*(+discPct||0)/100);
+  const taxable=subtotal-discount;
+  const tax=round2(taxable*(+taxPct||0)/100);
+  return {lines,subtotal,discount,tax,total:round2(taxable+tax)};
+}
+function money(x,sym){return sym+x.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});}
+// LOGIC-END
+const $=id=>document.getElementById(id);
+const KEY="invoice-maker-v1";
+const fields=["from","to","num","date","due","cur","disc","tax","notes"];
+function addRow(d={}){
+  const tr=$("items").insertRow();
+  tr.innerHTML='<td><input class="d"></td><td class="n"><input class="q" type="number" min="0" step="any"></td><td class="n"><input class="p" type="number" min="0" step="any"></td><td class="amt"></td><td class="noprint"><button title="remove">×</button></td>';
+  tr.querySelector(".d").value=d.desc||"";tr.querySelector(".q").value=d.qty??1;tr.querySelector(".p").value=d.price??"";
+  tr.querySelector("button").onclick=()=>{tr.remove();recalc();};
+  tr.querySelectorAll("input").forEach(i=>i.addEventListener("input",recalc));
+}
+function rows(){return [...$("items").rows].map(r=>({desc:r.querySelector(".d").value,qty:r.querySelector(".q").value,price:r.querySelector(".p").value}));}
+function recalc(){
+  const items=rows(),t=computeTotals(items,$("disc").value,$("tax").value),c=$("cur").value;
+  [...$("items").rows].forEach((r,i)=>r.querySelector(".amt").textContent=money(t.lines[i],c));
+  $("sub").textContent=money(t.subtotal,c);$("dv").textContent="-"+money(t.discount,c);$("tv").textContent=money(t.tax,c);$("total").textContent=money(t.total,c);
+  try{const o={items};fields.forEach(f=>o[f]=$(f).value);localStorage.setItem(KEY,JSON.stringify(o));}catch(e){}
+}
+function load(){
+  let o=null;try{o=JSON.parse(localStorage.getItem(KEY));}catch(e){}
+  if(o){fields.forEach(f=>{if(o[f]!==undefined)$(f).value=o[f];});(o.items&&o.items.length?o.items:[{}]).forEach(addRow);}
+  else{$("date").valueAsDate=new Date();addRow();}
+  recalc();
+}
+fields.forEach(f=>$(f).addEventListener("input",recalc));
+$("add").onclick=()=>{addRow();recalc();};
+$("clear").onclick=()=>{if(confirm("Clear everything?")){try{localStorage.removeItem(KEY);}catch(e){}location.reload();}};
+load();
+</script></main></body></html>

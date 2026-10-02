@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Subscription Tracker</title>
+<style>
+:root{--bg:#fff;--fg:#1c1e21;--mut:#6b7280;--card:#f6f7f9;--bd:#d9dce1;--ac:#2563eb;--warn:#b45309}
+@media(prefers-color-scheme:dark){:root{--bg:#14161a;--fg:#e6e8eb;--mut:#9aa1ab;--card:#1d2026;--bd:#333842;--ac:#6ea0ff;--warn:#fbbf24}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+main{max-width:860px;margin:0 auto;padding:16px}h1{font-size:20px;margin:0 0 4px}p.s{color:var(--mut);margin:0 0 12px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0}.stat{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:10px}.stat b{display:block;font-size:22px}.stat span{color:var(--mut);font-size:13px}
+form{display:grid;grid-template-columns:2fr 1fr 1fr 1.2fr auto;gap:8px;margin:12px 0}@media(max-width:700px){form{grid-template-columns:1fr 1fr}}
+input,select,button{font:inherit;padding:6px 8px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--fg)}button{cursor:pointer}button.p{background:var(--ac);color:#fff;border-color:var(--ac)}
+table{width:100%;border-collapse:collapse}th{text-align:left;font-size:13px;color:var(--mut);padding:4px;border-bottom:2px solid var(--bd)}td{padding:6px 4px;border-bottom:1px solid var(--bd)}td.r,th.r{text-align:right}
+.soon{color:var(--warn);font-weight:600}.row{display:flex;gap:8px;margin:12px 0;flex-wrap:wrap}
+</style></head><body><main>
+<h1>Subscription Tracker</h1><p class="s">See what you really pay per month and year, and what renews soon. Stored in this browser only.</p>
+<div class="stats"><div class="stat"><b id="m">0</b><span>per month</span></div><div class="stat"><b id="y">0</b><span>per year</span></div><div class="stat"><b id="c">0</b><span>subscriptions</span></div><div class="stat"><b id="n">0</b><span>renew in 7 days</span></div></div>
+<form id="f"><input id="name" placeholder="Name" required><input id="amt" type="number" step="0.01" min="0" placeholder="Price" required>
+<select id="per"><option value="1">monthly</option><option value="3">quarterly</option><option value="12">yearly</option><option value="0.25">weekly</option></select>
+<input id="next" type="date" required title="Next renewal date"><button class="p">Add</button></form>
+<table><thead><tr><th>Name</th><th class="r">Price</th><th>Cycle</th><th class="r">≈ / month</th><th>Renews</th><th></th></tr></thead><tbody id="tb"></tbody></table>
+<div class="row"><button id="csv">Export CSV</button></div>
+<script>
+// LOGIC-START
+const CYCLE_NAMES={"0.25":"weekly","1":"monthly","3":"quarterly","12":"yearly"};
+function monthlyCost(price,cycle){ // cycle = months per billing period; 0.25 = weekly
+  return cycle===0.25?price*52/12:price/cycle;
+}
+function ymd(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+function addMonths(d,n){const x=new Date(d.getTime());const day=x.getDate();x.setDate(1);x.setMonth(x.getMonth()+n);x.setDate(Math.min(day,new Date(x.getFullYear(),x.getMonth()+1,0).getDate()));return x;}
+function nextRenewal(dateStr,cycle,today){
+  let d=new Date(dateStr+"T00:00:00");const t=new Date(today.getFullYear(),today.getMonth(),today.getDate());
+  let k=0;
+  while(d<t&&k<2000){k++;d=cycle===0.25?new Date(d.getTime()+7*864e5):addMonths(new Date(dateStr+"T00:00:00"),cycle*k);}
+  return d;
+}
+function summarize(subs,today){
+  let monthly=0,soon=0;
+  for(const s of subs){
+    monthly+=monthlyCost(+s.amt,+s.per);
+    const days=Math.round((nextRenewal(s.next,+s.per,today)-new Date(today.getFullYear(),today.getMonth(),today.getDate()))/864e5);
+    if(days<=7)soon++;
+  }
+  return {monthly:Math.round(monthly*100)/100,yearly:Math.round(monthly*1200)/100,count:subs.length,soon};
+}
+function toCSV(subs){
+  const q=s=>/[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
+  return ["name,price,cycle,next_renewal",...subs.map(s=>[q(s.name),s.amt,CYCLE_NAMES[s.per]||s.per,s.next].join(","))].join("\n");
+}
+// LOGIC-END
+const $=id=>document.getElementById(id);const KEY="subs-v1";
+let subs=[];try{subs=JSON.parse(localStorage.getItem(KEY))||[];}catch(e){}
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(subs));}catch(e){}};
+const fmt=x=>x.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+function render(){
+  const today=new Date(),tb=$("tb");tb.textContent="";
+  const rows=subs.map((s,i)=>({s,i,next:nextRenewal(s.next,+s.per,today)})).sort((a,b)=>a.next-b.next);
+  for(const {s,i,next} of rows){
+    const days=Math.round((next-new Date(today.getFullYear(),today.getMonth(),today.getDate()))/864e5);
+    const tr=tb.insertRow();
+    tr.insertCell().textContent=s.name;
+    const p=tr.insertCell();p.className="r";p.textContent=fmt(+s.amt);
+    tr.insertCell().textContent=CYCLE_NAMES[s.per]||s.per;
+    const m=tr.insertCell();m.className="r";m.textContent=fmt(monthlyCost(+s.amt,+s.per));
+    const r=tr.insertCell();r.textContent=ymd(next)+` (${days===0?"today":days+"d"})`;if(days<=7)r.className="soon";
+    const x=tr.insertCell();const b=document.createElement("button");b.textContent="×";b.title="Remove";b.onclick=()=>{subs.splice(i,1);save();render();};x.appendChild(b);
+  }
+  const t=summarize(subs,today);$("m").textContent=fmt(t.monthly);$("y").textContent=fmt(t.yearly);$("c").textContent=t.count;$("n").textContent=t.soon;
+}
+$("f").onsubmit=e=>{e.preventDefault();subs.push({name:$("name").value.trim(),amt:$("amt").value,per:$("per").value,next:$("next").value});save();e.target.reset();render();};
+$("csv").onclick=()=>{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([toCSV(subs)],{type:"text/csv"}));a.download="subscriptions.csv";a.click();URL.revokeObjectURL(a.href);};
+render();
+</script></main></body></html>

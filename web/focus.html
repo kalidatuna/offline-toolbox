@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Focus Timer</title>
+<style>
+:root{--bg:#fff;--fg:#1c1e21;--mut:#6b7280;--card:#f6f7f9;--bd:#d9dce1;--ac:#2563eb;--br:#1b7f3b}
+@media(prefers-color-scheme:dark){:root{--bg:#14161a;--fg:#e6e8eb;--mut:#9aa1ab;--card:#1d2026;--bd:#333842;--ac:#6ea0ff;--br:#56d364}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+main{max-width:520px;margin:0 auto;padding:16px;text-align:center}h1{font-size:20px;margin:0 0 4px}p.s{color:var(--mut);margin:0 0 12px}
+#time{font:700 72px/1.1 ui-monospace,monospace;margin:16px 0}#mode{color:var(--ac);font-weight:600}#mode.break{color:var(--br)}
+input,button{font:inherit;padding:8px 12px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--fg)}button{cursor:pointer}button.p{background:var(--ac);color:#fff;border-color:var(--ac)}
+.row{display:flex;gap:8px;justify-content:center;margin:10px 0;flex-wrap:wrap}.cfg input{width:64px}.cfg label{font-size:13px;color:var(--mut)}
+#task{width:100%}ul{list-style:none;padding:0;text-align:left;margin:8px 0}li{padding:4px 0;border-bottom:1px solid var(--bd);display:flex;justify-content:space-between}
+</style></head><body><main>
+<h1>Focus Timer</h1><p class="s">Pomodoro with a session log. Keeps working in a background tab.</p>
+<div id="mode">Focus</div><div id="time">25:00</div>
+<input id="task" placeholder="What are you working on?">
+<div class="row"><button id="go" class="p">Start</button><button id="skip">Skip</button><button id="reset">Reset</button></div>
+<div class="row cfg"><label>Focus min <input id="fm" type="number" min="1" value="25"></label><label>Break min <input id="bm" type="number" min="1" value="5"></label><label>Long break <input id="lm" type="number" min="1" value="15"></label></div>
+<div class="s" id="today"></div><ul id="log"></ul>
+<script>
+// LOGIC-START
+function fmtTime(sec){sec=Math.max(0,Math.ceil(sec));return String(Math.floor(sec/60)).padStart(2,"0")+":"+String(sec%60).padStart(2,"0");}
+function nextPhase(phase,focusDone){ // focusDone = completed focus sessions including the one just finished
+  if(phase==="focus")return focusDone>0&&focusDone%4===0?"long":"break";
+  return "focus";
+}
+function phaseSeconds(phase,cfg){return 60*(phase==="focus"?cfg.fm:phase==="break"?cfg.bm:cfg.lm);}
+function todayStats(log,now){
+  const d=new Date(now).toDateString();
+  const t=log.filter(e=>new Date(e.at).toDateString()===d);
+  return {sessions:t.length,minutes:t.reduce((a,e)=>a+e.min,0)};
+}
+// LOGIC-END
+const $=id=>document.getElementById(id);const KEY="focus-v1";
+let log=[];try{log=JSON.parse(localStorage.getItem(KEY))||[];}catch(e){}
+let phase="focus",focusDone=0,endAt=null,left=null,timer=null;
+const cfg=()=>({fm:+$("fm").value||25,bm:+$("bm").value||5,lm:+$("lm").value||15});
+function paint(){
+  const sec=endAt?(endAt-Date.now())/1000:(left??phaseSeconds(phase,cfg()));
+  $("time").textContent=fmtTime(sec);document.title=(endAt?fmtTime(sec)+" · ":"")+"Focus Timer";
+  $("mode").textContent={focus:"Focus",break:"Short break",long:"Long break"}[phase];$("mode").className=phase==="focus"?"":"break";
+  $("go").textContent=endAt?"Pause":(left!==null?"Resume":"Start");
+  const s=todayStats(log,Date.now());$("today").textContent=`Today: ${s.sessions} sessions, ${s.minutes} focused minutes`;
+  const ul=$("log");ul.textContent="";log.slice(-5).reverse().forEach(e=>{const li=document.createElement("li");const a=document.createElement("span");a.textContent=e.task||"(untitled)";const b=document.createElement("span");b.textContent=`${e.min} min · ${new Date(e.at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}`;li.append(a,b);ul.appendChild(li);});
+}
+function beep(){try{const c=new AudioContext(),o=c.createOscillator();o.connect(c.destination);o.frequency.value=880;o.start();setTimeout(()=>{o.stop();c.close();},400);}catch(e){}}
+function finish(){
+  clearInterval(timer);timer=null;endAt=null;left=null;beep();
+  if(phase==="focus"){focusDone++;log.push({task:$("task").value,min:cfg().fm,at:Date.now()});try{localStorage.setItem(KEY,JSON.stringify(log.slice(-500)));}catch(e){}}
+  if("Notification" in window&&Notification.permission==="granted")new Notification(phase==="focus"?"Focus session done — take a break":"Break over — back to work");
+  phase=nextPhase(phase,focusDone);paint();
+}
+function tick(){if(endAt-Date.now()<=0)finish();else paint();}
+$("go").onclick=()=>{
+  if(endAt){left=(endAt-Date.now())/1000;endAt=null;clearInterval(timer);timer=null;}
+  else{endAt=Date.now()+(left??phaseSeconds(phase,cfg()))*1000;timer=setInterval(tick,250);
+    if("Notification" in window&&Notification.permission==="default")Notification.requestPermission();}
+  paint();
+};
+$("skip").onclick=()=>{clearInterval(timer);timer=null;endAt=null;left=null;phase=nextPhase(phase,focusDone);paint();};
+$("reset").onclick=()=>{clearInterval(timer);timer=null;endAt=null;left=null;phase="focus";focusDone=0;paint();};
+["fm","bm","lm"].forEach(i=>$(i).addEventListener("input",()=>{if(!endAt&&left===null)paint();}));
+paint();
+</script></main></body></html>
