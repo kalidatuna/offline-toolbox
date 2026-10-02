@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Text Stats</title>
+<style>
+:root{--bg:#fff;--fg:#1c1e21;--mut:#6b7280;--card:#f6f7f9;--bd:#d9dce1;--ac:#2563eb;--ok:#1b7f3b;--bad:#c62828}
+@media(prefers-color-scheme:dark){:root{--bg:#14161a;--fg:#e6e8eb;--mut:#9aa1ab;--card:#1d2026;--bd:#333842;--ac:#6ea0ff;--ok:#56d364;--bad:#ff7b72}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+main{max-width:900px;margin:0 auto;padding:16px}h1{font-size:20px;margin:0 0 4px}p.s{color:var(--mut);margin:0 0 12px}
+textarea{width:100%;height:240px;padding:10px;font:15px/1.5 system-ui;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--fg)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:12px 0}.stat{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:8px 10px}.stat b{display:block;font-size:20px}.stat span{color:var(--mut);font-size:13px}
+h2{font-size:15px;margin:16px 0 6px}.lim{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--bd)}.ok{color:var(--ok)}.bad{color:var(--bad)}
+table{border-collapse:collapse;font-size:14px}td,th{padding:3px 14px 3px 0;text-align:left}
+</style></head><body><main>
+<h1>Text Stats</h1><p class="s">Word count, reading time, readability, keyword density and platform length limits. Local only.</p>
+<textarea id="t" placeholder="Paste or type your text…" spellcheck="true"></textarea>
+<div class="stats" id="st"></div>
+<h2>Length limits</h2><div id="lim"></div>
+<h2>Top words</h2><table id="kw"></table>
+<script>
+// LOGIC-START
+const STOP=new Set("a an and are as at be but by for from has have he her his i if in into is it its me my not of on or our she so that the their them they this to us was we were what when which who will with you your".split(" "));
+function words(t){return t.toLowerCase().match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu)||[];}
+function countSyllables(w){
+  w=w.toLowerCase().replace(/[^a-z]/g,"");
+  if(!w)return 0;if(w.length<=3)return 1;
+  w=w.replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/,"").replace(/^y/,"");
+  const m=w.match(/[aeiouy]{1,2}/g);return m?m.length:1;
+}
+function sentences(t){return (t.match(/[^.!?]+[.!?]+|[^.!?]+$/g)||[]).filter(s=>/\w/.test(s));}
+function analyze(t){
+  const w=words(t),s=sentences(t);
+  const syl=w.reduce((a,x)=>a+countSyllables(x),0);
+  const flesch=w.length&&s.length?206.835-1.015*(w.length/s.length)-84.6*(syl/w.length):0;
+  const grade=w.length&&s.length?0.39*(w.length/s.length)+11.8*(syl/w.length)-15.59:0;
+  const freq={};w.forEach(x=>{if(x.length>2&&!STOP.has(x))freq[x]=(freq[x]||0)+1;});
+  const top=Object.entries(freq).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).slice(0,10);
+  return {chars:[...t].length,charsNoSpace:[...t.replace(/\s/g,"")].length,words:w.length,sentences:s.length,
+    paragraphs:t.split(/\n\s*\n/).filter(p=>p.trim()).length,readMin:w.length/238,speakMin:w.length/150,
+    flesch:Math.round(flesch*10)/10,grade:Math.round(grade*10)/10,top};
+}
+function readLabel(f){return f>=90?"very easy":f>=70?"easy":f>=60?"plain English":f>=50?"fairly hard":f>=30?"hard":"very hard";}
+const LIMITS=[["X / Twitter post",280],["SMS (1 segment)",160],["Meta description",160],["SEO title",60],["Instagram caption",2200],["LinkedIn post",3000]];
+// LOGIC-END
+const $=id=>document.getElementById(id);
+function mins(m){return m<1?Math.max(1,Math.round(m*60))+" sec":Math.round(m)+" min";}
+function update(){
+  const t=$("t").value,a=analyze(t);
+  const items=[[a.words,"words"],[a.chars,"characters"],[a.charsNoSpace,"no spaces"],[a.sentences,"sentences"],[a.paragraphs,"paragraphs"],[a.words?mins(a.readMin):"–","reading time"],[a.words?mins(a.speakMin):"–","speaking time"],[a.words?a.flesch:"–",a.words?`Flesch (${readLabel(a.flesch)})`:"readability"],[a.words?a.grade:"–","grade level"]];
+  $("st").textContent="";items.forEach(([v,l])=>{const d=document.createElement("div");d.className="stat";const b=document.createElement("b");b.textContent=v;const s=document.createElement("span");s.textContent=l;d.append(b,s);$("st").appendChild(d);});
+  $("lim").textContent="";LIMITS.forEach(([n,max])=>{const d=document.createElement("div");d.className="lim";const l=document.createElement("span");l.textContent=n;const r=document.createElement("span");const left=max-a.chars;r.textContent=left>=0?`${a.chars}/${max} (${left} left)`:`${a.chars}/${max} (${-left} over)`;r.className=left>=0?"ok":"bad";d.append(l,r);$("lim").appendChild(d);});
+  const kw=$("kw");kw.textContent="";a.top.forEach(([w,c])=>{const tr=kw.insertRow();tr.insertCell().textContent=w;tr.insertCell().textContent=c;tr.insertCell().textContent=(100*c/a.words).toFixed(1)+"%";});
+}
+$("t").addEventListener("input",update);update();
+</script></main></body></html>

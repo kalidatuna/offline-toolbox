@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Regex Tester</title>
+<style>
+:root{--bg:#fff;--fg:#1c1e21;--mut:#6b7280;--card:#f6f7f9;--bd:#d9dce1;--ac:#2563eb;--bad:#c62828;--hl:#ffe58a;--hl2:#a8d8ff}
+@media(prefers-color-scheme:dark){:root{--bg:#14161a;--fg:#e6e8eb;--mut:#9aa1ab;--card:#1d2026;--bd:#333842;--ac:#6ea0ff;--bad:#ff7b72;--hl:#6b5a10;--hl2:#1c4a73}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+main{max-width:900px;margin:0 auto;padding:16px}h1{font-size:20px;margin:0 0 4px}p.s{color:var(--mut);margin:0 0 12px}
+.row{display:flex;gap:8px;margin:8px 0;align-items:center;flex-wrap:wrap}
+input,textarea{font:14px ui-monospace,monospace;padding:8px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--fg)}
+textarea{width:100%;height:150px}#re{flex:1;min-width:220px}
+.chip{font:13px system-ui;padding:3px 9px;border:1px solid var(--bd);border-radius:99px;background:var(--card);color:var(--fg);cursor:pointer}
+#view{white-space:pre-wrap;word-break:break-word;border:1px solid var(--bd);border-radius:6px;padding:10px;font:14px ui-monospace,monospace;min-height:60px}
+mark{background:var(--hl);color:inherit;border-radius:2px}mark.b{background:var(--hl2)}
+#err{color:var(--bad);min-height:1.4em}table{border-collapse:collapse;width:100%;font:13px ui-monospace,monospace}td,th{border-bottom:1px solid var(--bd);padding:4px 8px;text-align:left}
+h2{font-size:15px;margin:16px 0 4px}
+</style></head><body><main>
+<h1>Regex Tester</h1><p class="s">Live matches, capture groups and replace preview using your browser's JavaScript regex engine. Local only.</p>
+<div class="row"><span>/</span><input id="re" placeholder="pattern, e.g. (\w+)@(\w+\.com)" spellcheck="false"><span>/</span><input id="fl" value="g" size="5" spellcheck="false" aria-label="flags"></div>
+<div id="err"></div>
+<textarea id="txt" spellcheck="false" placeholder="Test string">Contact: ada@example.com, bob@test.org
+Phone: 555-123-4567</textarea>
+<div class="row"><span>Common:</span><span id="chips"></span></div>
+<h2>Matches</h2><div id="view"></div><div id="count" class="s" style="color:var(--mut)"></div>
+<h2>Groups</h2><table><thead><tr><th>#</th><th>Match</th><th>Index</th><th>Groups</th></tr></thead><tbody id="tb"></tbody></table>
+<h2>Replace</h2><div class="row"><input id="rep" placeholder="$1 or $<name>" style="flex:1"></div><div id="repout" class="s" style="white-space:pre-wrap;font-family:ui-monospace,monospace;color:var(--fg)"></div>
+<script>
+// LOGIC-START
+function runRegex(pattern,flags,text,limit=1000){
+  let rx;
+  try{rx=new RegExp(pattern,flags.includes("g")?flags:flags+"g");}catch(e){return {error:e.message,matches:[]};}
+  const matches=[];let m;
+  while((m=rx.exec(text))&&matches.length<limit){
+    matches.push({text:m[0],index:m.index,groups:Array.from(m).slice(1),named:m.groups?{...m.groups}:null});
+    if(m[0]==="")rx.lastIndex++;
+  }
+  return {error:null,matches};
+}
+function segments(text,matches){
+  const out=[];let pos=0;
+  for(const m of matches){
+    if(m.text==="")continue;
+    if(m.index>pos)out.push({text:text.slice(pos,m.index),hit:false});
+    out.push({text:m.text,hit:true});pos=m.index+m.text.length;
+  }
+  if(pos<text.length)out.push({text:text.slice(pos),hit:false});
+  return out;
+}
+function replaceAll(pattern,flags,text,rep){
+  try{return {out:text.replace(new RegExp(pattern,flags),rep)};}catch(e){return {error:e.message};}
+}
+const COMMON={Email:"[\\w.+-]+@[\\w-]+\\.[\\w.-]+",URL:"https?://[^\\s/$.?#].[^\\s]*","IPv4":"\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b",Date:"\\d{4}-\\d{2}-\\d{2}",Phone:"\\+?\\d[\\d\\s().-]{7,}\\d","Hex color":"#(?:[0-9a-fA-F]{3}){1,2}\\b",Whitespace:"\\s+"};
+// LOGIC-END
+const $=id=>document.getElementById(id);
+function update(){
+  const text=$("txt").value,r=runRegex($("re").value,$("fl").value,text);
+  $("err").textContent=r.error||"";
+  const v=$("view");v.textContent="";
+  if(!$("re").value){v.textContent=text;$("count").textContent="";$("tb").textContent="";$("repout").textContent="";return;}
+  segments(text,r.matches).forEach((s,i)=>{if(s.hit){const m=document.createElement("mark");if(i%4===2)m.className="b";m.textContent=s.text;v.appendChild(m);}else v.appendChild(document.createTextNode(s.text));});
+  $("count").textContent=r.error?"":`${r.matches.length} match${r.matches.length===1?"":"es"}`;
+  const tb=$("tb");tb.textContent="";
+  r.matches.slice(0,200).forEach((m,i)=>{
+    const tr=tb.insertRow();[i+1,m.text,m.index,m.groups.map((g,j)=>`$${j+1}=${g===undefined?"∅":JSON.stringify(g)}`).join("  ")+(m.named?"  "+JSON.stringify(m.named):"")].forEach(c=>{tr.insertCell().textContent=c;});});
+  const rp=$("rep").value;
+  if(rp!==""||$("rep").dataset.used){$("rep").dataset.used=1;const o=replaceAll($("re").value,$("fl").value,text,rp);$("repout").textContent=o.error||o.out;}
+}
+const chips=$("chips");
+Object.entries(COMMON).forEach(([k,v])=>{const b=document.createElement("button");b.className="chip";b.textContent=k;b.onclick=()=>{$("re").value=v;update();};chips.appendChild(b);chips.appendChild(document.createTextNode(" "));});
+["re","fl","txt","rep"].forEach(id=>$(id).addEventListener("input",update));
+update();
+</script></main></body></html>

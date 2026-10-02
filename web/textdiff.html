@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Text Diff</title>
+<style>
+:root{--bg:#fff;--fg:#1c1e21;--mut:#6b7280;--card:#f6f7f9;--bd:#d9dce1;--add:#d7f5dd;--del:#fde0e0;--addw:#8fdca0;--delw:#f4a3a3}
+@media(prefers-color-scheme:dark){:root{--bg:#14161a;--fg:#e6e8eb;--mut:#9aa1ab;--card:#1d2026;--bd:#333842;--add:#16361f;--del:#431c1c;--addw:#23703a;--delw:#8a2f2f}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+main{max-width:1100px;margin:0 auto;padding:16px}h1{font-size:20px;margin:0 0 4px}p.s{color:var(--mut);margin:0 0 12px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:760px){.grid{grid-template-columns:1fr}}
+textarea{width:100%;height:220px;font:13px/1.45 ui-monospace,monospace;padding:10px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--fg)}
+.row{display:flex;gap:12px;margin:10px 0;align-items:center;flex-wrap:wrap}button{font:inherit;padding:6px 14px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--fg);cursor:pointer}
+#res{border:1px solid var(--bd);border-radius:6px;font:13px/1.5 ui-monospace,monospace;overflow:auto}
+.l{display:flex;white-space:pre-wrap;word-break:break-word}.l span.n{flex:0 0 3.2em;text-align:right;padding-right:8px;color:var(--mut);user-select:none}.l span.t{flex:1;padding:0 6px}
+.l.add{background:var(--add)}.l.del{background:var(--del)}.l.add mark{background:var(--addw);color:inherit}.l.del mark{background:var(--delw);color:inherit}
+#sum{color:var(--mut)}
+</style></head><body><main>
+<h1>Text Diff</h1><p class="s">Compare two texts line by line, with word-level highlights inside changed lines. Local only.</p>
+<div class="grid"><textarea id="a" placeholder="Original" spellcheck="false"></textarea><textarea id="b" placeholder="Changed" spellcheck="false"></textarea></div>
+<div class="row"><button id="go">Compare</button>
+<label><input type="checkbox" id="ws"> ignore whitespace</label><label><input type="checkbox" id="ci"> ignore case</label><span id="sum"></span></div>
+<div id="res"></div>
+<script>
+// LOGIC-START
+function norm(s,ws,ci){if(ws)s=s.replace(/\s+/g," ").trim();if(ci)s=s.toLowerCase();return s;}
+function lcsDiff(a,b,eq){
+  const n=a.length,m=b.length;
+  const dp=Array.from({length:n+1},()=>new Uint32Array(m+1));
+  for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)dp[i][j]=eq(a[i],b[j])?dp[i+1][j+1]+1:Math.max(dp[i+1][j],dp[i][j+1]);
+  const out=[];let i=0,j=0;
+  while(i<n&&j<m){
+    if(eq(a[i],b[j])){out.push({t:"eq",a:a[i],b:b[j],ai:i,bi:j});i++;j++;}
+    else if(dp[i+1][j]>=dp[i][j+1]){out.push({t:"del",a:a[i],ai:i});i++;}
+    else{out.push({t:"add",b:b[j],bi:j});j++;}
+  }
+  while(i<n){out.push({t:"del",a:a[i],ai:i});i++;}
+  while(j<m){out.push({t:"add",b:b[j],bi:j});j++;}
+  return out;
+}
+function diffLines(a,b,ws,ci){
+  const A=a.split("\n"),B=b.split("\n");
+  return lcsDiff(A,B,(x,y)=>norm(x,ws,ci)===norm(y,ws,ci));
+}
+function wordDiff(a,b){
+  const tok=s=>s.match(/\s+|[^\s]+/g)||[];
+  return lcsDiff(tok(a),tok(b),(x,y)=>x===y);
+}
+function stats(d){return {added:d.filter(x=>x.t==="add").length,removed:d.filter(x=>x.t==="del").length,same:d.filter(x=>x.t==="eq").length};}
+// LOGIC-END
+const $=id=>document.getElementById(id);
+function line(cls,num,parts){
+  const d=document.createElement("div");d.className="l "+cls;
+  const n=document.createElement("span");n.className="n";n.textContent=num;
+  const t=document.createElement("span");t.className="t";
+  for(const p of parts){if(p.mark){const m=document.createElement("mark");m.textContent=p.text;t.appendChild(m);}else t.appendChild(document.createTextNode(p.text));}
+  d.append(n,t);return d;
+}
+function render(){
+  const ws=$("ws").checked,ci=$("ci").checked;
+  const d=diffLines($("a").value,$("b").value,ws,ci);
+  const res=$("res");res.textContent="";
+  for(let k=0;k<d.length;k++){
+    const x=d[k];
+    if(x.t==="eq"){res.appendChild(line("",x.bi+1,[{text:"  "+x.b}]));continue;}
+    // pair a run of dels with following run of adds for word highlighting
+    if(x.t==="del"){
+      let dels=[],adds=[];let p=k;
+      while(p<d.length&&d[p].t==="del")dels.push(d[p++]);
+      while(p<d.length&&d[p].t==="add")adds.push(d[p++]);
+      const pairs=Math.min(dels.length,adds.length);
+      dels.forEach((dl,i)=>{
+        if(i<pairs){const w=wordDiff(dl.a,adds[i].b).filter(z=>z.t!=="add");
+          res.appendChild(line("del",dl.ai+1,[{text:"- "},...w.map(z=>({text:z.a,mark:z.t==="del"}))]));}
+        else res.appendChild(line("del",dl.ai+1,[{text:"- "+dl.a}]));});
+      adds.forEach((ad,i)=>{
+        if(i<pairs){const w=wordDiff(dels[i].a,ad.b).filter(z=>z.t!=="del");
+          res.appendChild(line("add",ad.bi+1,[{text:"+ "},...w.map(z=>({text:z.b,mark:z.t==="add"}))]));}
+        else res.appendChild(line("add",ad.bi+1,[{text:"+ "+ad.b}]));});
+      k=p-1;
+    } else res.appendChild(line("add",x.bi+1,[{text:"+ "+x.b}]));
+  }
+  const s=stats(d);$("sum").textContent=`${s.added} added, ${s.removed} removed, ${s.same} unchanged`+(s.added+s.removed===0?" — identical":"");
+}
+$("go").onclick=render;
+</script></main></body></html>

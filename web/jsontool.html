@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JSON Tool</title>
+<style>
+:root{--bg:#fff;--fg:#1c1e21;--mut:#6b7280;--card:#f6f7f9;--bd:#d9dce1;--ac:#2563eb;--bad:#c62828;--ok:#1b7f3b}
+@media(prefers-color-scheme:dark){:root{--bg:#14161a;--fg:#e6e8eb;--mut:#9aa1ab;--card:#1d2026;--bd:#333842;--ac:#6ea0ff;--bad:#ff7b72;--ok:#56d364}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+main{max-width:1100px;margin:0 auto;padding:16px}h1{font-size:20px;margin:0 0 4px}p.s{color:var(--mut);margin:0 0 12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;align-items:center}
+button,input{font:inherit;padding:6px 12px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--fg)}
+button{cursor:pointer}button:hover{border-color:var(--ac)}
+textarea{width:100%;height:320px;font:13px/1.45 ui-monospace,monospace;padding:10px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--fg);resize:vertical}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:760px){.grid{grid-template-columns:1fr}}
+#status{font-weight:600;min-height:1.5em}.bad{color:var(--bad)}.ok{color:var(--ok)}
+label{color:var(--mut)}
+</style></head><body><main>
+<h1>JSON Tool</h1><p class="s">Format, validate, minify, sort keys, query a path, convert to CSV. Runs entirely in your browser; nothing is uploaded.</p>
+<div class="grid"><div><textarea id="in" spellcheck="false" placeholder='Paste JSON here, e.g. {"a":[1,2,{"b":3}]}'></textarea></div>
+<div><textarea id="out" spellcheck="false" readonly></textarea></div></div>
+<div id="status"></div>
+<div class="row">
+<button id="fmt">Format</button><button id="min">Minify</button><button id="sort">Sort keys</button><button id="csv">To CSV</button>
+<label>Indent <input id="ind" type="number" value="2" min="0" max="8" style="width:64px"></label>
+<button id="copy">Copy output</button><button id="swap">Output → input</button>
+</div>
+<div class="row"><label>Path</label><input id="path" placeholder="users[0].name  or  items[*].id" style="flex:1;min-width:200px"><button id="q">Query</button></div>
+<script>
+// LOGIC-START
+// Minimal strict JSON scanner: returns index of first offending char (text.length if truncated), or -1 if valid.
+function locateError(s){
+  let i=0;const ws=()=>{while(i<s.length&&" \t\n\r".includes(s[i]))i++;};
+  const fail=()=>{throw i;};
+  function val(){
+    ws();const c=s[i];
+    if(c==="{"){i++;ws();if(s[i]==="}"){i++;return;}
+      for(;;){ws();if(s[i]!=='"')fail();str();ws();if(s[i]!==":")fail();i++;val();ws();
+        if(s[i]===","){i++;continue;}if(s[i]==="}"){i++;return;}fail();}}
+    if(c==="["){i++;ws();if(s[i]==="]"){i++;return;}
+      for(;;){val();ws();if(s[i]===","){i++;continue;}if(s[i]==="]"){i++;return;}fail();}}
+    if(c==='"')return str();
+    const lit=/^(?:true|false|null|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)/.exec(s.slice(i));
+    if(!lit)fail();i+=lit[0].length;
+  }
+  function str(){i++;while(i<s.length&&s[i]!=='"'){if(s[i]==="\n")fail();if(s[i]==="\\")i++;i++;}if(s[i]!=='"')fail();i++;}
+  try{val();ws();if(i<s.length)fail();return -1;}catch(e){return typeof e==="number"?e:-1;}
+}
+function parseJSON(text){
+  try{return {ok:true,value:JSON.parse(text)};}catch(e){
+    let pos=null;const m=/position (\d+)/.exec(e.message);
+    if(m)pos=+m[1];else{const p=locateError(text);if(p>=0)pos=p;}
+    let line=null,col=null;
+    if(pos!==null){const before=text.slice(0,pos).split("\n");line=before.length;col=before[before.length-1].length+1;}
+    return {ok:false,error:e.message,line,col};
+  }
+}
+function sortKeys(v){
+  if(Array.isArray(v))return v.map(sortKeys);
+  if(v&&typeof v==="object"){const o={};Object.keys(v).sort().forEach(k=>o[k]=sortKeys(v[k]));return o;}
+  return v;
+}
+function tokenizePath(p){
+  const t=[];const re=/([^.\[\]]+)|\[(\d+|\*)\]/g;let m;
+  while((m=re.exec(p.replace(/^\$\.?/,"")))){t.push(m[1]!==undefined?{k:m[1]}:(m[2]==="*"?{all:true}:{i:+m[2]}));}
+  return t;
+}
+function queryPath(v,p){
+  let cur=[v];
+  for(const t of tokenizePath(p)){
+    const next=[];
+    for(const c of cur){
+      if(t.all){if(Array.isArray(c))next.push(...c);else if(c&&typeof c==="object")next.push(...Object.values(c));}
+      else if("i" in t){if(Array.isArray(c)&&t.i<c.length)next.push(c[t.i]);}
+      else if(c&&typeof c==="object"&&!Array.isArray(c)&&t.k in c)next.push(c[t.k]);
+    }
+    cur=next;
+  }
+  return cur;
+}
+function flatten(v,prefix="",out={}){
+  if(Array.isArray(v)){v.forEach((x,i)=>flatten(x,prefix+"["+i+"]",out));if(!v.length)out[prefix]="[]";}
+  else if(v&&typeof v==="object"){const ks=Object.keys(v);ks.forEach(k=>flatten(v[k],prefix?prefix+"."+k:k,out));if(!ks.length)out[prefix]="{}";}
+  else out[prefix]=v;
+  return out;
+}
+function csvCell(x){if(x===null||x===undefined)return"";const s=String(x);return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
+function toCSV(v){
+  const rows=Array.isArray(v)?v:[v];
+  const flat=rows.map(r=>flatten(r));
+  const cols=[];flat.forEach(f=>Object.keys(f).forEach(k=>{if(!cols.includes(k))cols.push(k);}));
+  return [cols.map(csvCell).join(","),...flat.map(f=>cols.map(c=>csvCell(f[c])).join(","))].join("\n");
+}
+// LOGIC-END
+const $=id=>document.getElementById(id);
+function status(msg,cls){const s=$("status");s.textContent=msg;s.className=cls||"";}
+function withParsed(fn){
+  const r=parseJSON($("in").value);
+  if(!r.ok){status(`Invalid JSON: ${r.error}`+(r.line?` (line ${r.line}, col ${r.col})`:""),"bad");return;}
+  fn(r.value);
+}
+const ind=()=>Math.max(0,Math.min(8,+$("ind").value||0));
+$("fmt").onclick=()=>withParsed(v=>{$("out").value=JSON.stringify(v,null,ind());status("Valid JSON","ok");});
+$("min").onclick=()=>withParsed(v=>{$("out").value=JSON.stringify(v);status("Minified","ok");});
+$("sort").onclick=()=>withParsed(v=>{$("out").value=JSON.stringify(sortKeys(v),null,ind());status("Keys sorted","ok");});
+$("csv").onclick=()=>withParsed(v=>{$("out").value=toCSV(v);status("Converted to CSV (nested keys flattened with dots)","ok");});
+$("q").onclick=()=>withParsed(v=>{const r=queryPath(v,$("path").value);$("out").value=JSON.stringify(r.length===1?r[0]:r,null,ind());status(r.length+" match(es)",r.length?"ok":"bad");});
+$("copy").onclick=()=>navigator.clipboard.writeText($("out").value).then(()=>status("Copied","ok"),()=>status("Copy blocked by browser","bad"));
+$("swap").onclick=()=>{$("in").value=$("out").value;};
+</script></main></body></html>
