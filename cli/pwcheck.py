@@ -56,6 +56,10 @@ def assess(pw):
 
 
 def generate(length=20, words=0, wordlist=None):
+    if isinstance(words, bool) or not isinstance(words, int) or words < 0:
+        raise ValueError("word count must be a nonnegative integer")
+    if not words and (isinstance(length, bool) or not isinstance(length, int) or length < 4):
+        raise ValueError("password length must be at least 4")
     if words:
         if not wordlist:
             raise ValueError("--wordfile required for passphrases")
