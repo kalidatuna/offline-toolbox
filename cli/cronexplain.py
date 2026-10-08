@@ -98,6 +98,8 @@ def describe(expr):
 
 
 def next_runs(expr, start, n):
+    if isinstance(n, bool) or not isinstance(n, int) or n < 1:
+        raise ValueError("run count must be a positive integer")
     (mi, ho, dom, mon, dow), raw = parse(expr)
     t = start.replace(second=0, microsecond=0) + timedelta(minutes=1)
     out, limit = [], 366 * 24 * 60 * 5
