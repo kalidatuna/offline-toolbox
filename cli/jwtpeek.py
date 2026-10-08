@@ -24,9 +24,12 @@ def decode(token):
     if len(parts) not in (2, 3):
         raise ValueError("not a JWT (expected 3 dot-separated parts)")
     try:
-        return json.loads(b64d(parts[0])), json.loads(b64d(parts[1]))
+        header, payload = json.loads(b64d(parts[0])), json.loads(b64d(parts[1]))
     except Exception as e:
-        raise ValueError(f"cannot decode: {e}")
+        raise ValueError(f"cannot decode: {e}") from e
+    if not isinstance(header, dict) or not isinstance(payload, dict):
+        raise ValueError("JWT header and payload must be JSON objects")
+    return header, payload
 
 
 def analyze(header, payload, now=None):
