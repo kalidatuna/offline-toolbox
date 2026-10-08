@@ -10,7 +10,7 @@ Without '--' the expense is split among everyone who appears in the file.
 """
 import argparse
 import sys
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation
 
 CENT = Decimal("0.01")
 
@@ -46,12 +46,11 @@ def balances(expenses, people):
     bal = {p: Decimal(0) for p in people}
     for payer, amt, who in expenses:
         who = who or people
-        share = (amt / len(who)).quantize(CENT, ROUND_HALF_UP)
+        cents, remainder = divmod(int(amt / CENT), len(who))
         bal[payer] += amt
-        for w in who:
-            bal[w] -= share
-        # put rounding remainder on the payer so totals stay exact
-        bal[payer] -= amt - share * len(who)
+        # Assign leftover cents to the first beneficiaries in input order.
+        for index, person in enumerate(who):
+            bal[person] -= Decimal(cents + (index < remainder)) * CENT
     return bal
 
 
