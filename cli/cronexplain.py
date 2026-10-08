@@ -20,6 +20,8 @@ RANGES = [(0, 59), (0, 23), (1, 31), (1, 12), (0, 6)]
 
 def parse_field(f, idx):
     lo, hi = RANGES[idx]
+    if idx == 4:
+        hi = 7
     names = MONTHS if idx == 3 else DAYS if idx == 4 else None
 
     def val(tok):
@@ -27,8 +29,6 @@ def parse_field(f, idx):
         if names and t in names:
             return names.index(t) + (1 if idx == 3 else 0)
         n = int(tok)
-        if idx == 4 and n == 7:
-            n = 0
         return n
 
     out = set()
@@ -47,7 +47,7 @@ def parse_field(f, idx):
             b = hi if step != 1 or "/" in part else a
         if a < lo or b > hi or a > b:
             raise ValueError(f"value out of range in '{part}' (allowed {lo}-{hi})")
-        out.update(range(a, b + 1, step))
+        out.update(value % 7 if idx == 4 else value for value in range(a, b + 1, step))
     return out
 
 
