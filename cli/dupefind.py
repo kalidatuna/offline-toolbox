@@ -16,7 +16,13 @@ from collections import defaultdict
 def parse_size(s):
     units = {"k": 1024, "m": 1024**2, "g": 1024**3}
     s = s.strip().lower()
-    return int(float(s[:-1]) * units[s[-1]]) if s[-1] in units else int(s)
+    try:
+        size = float(s[:-1]) * units[s[-1]] if s and s[-1] in units else int(s)
+        if size < 0:
+            raise ValueError("size must be nonnegative")
+        return int(size)
+    except (ValueError, OverflowError) as error:
+        raise ValueError("size must be a finite nonnegative byte count, optionally suffixed K, M or G") from error
 
 
 def human(n):
@@ -83,10 +89,10 @@ def find_dupes(roots, min_size=1):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("dirs", nargs="+")
-    ap.add_argument("--min-size", default="1", help="e.g. 100k, 5M")
+    ap.add_argument("--min-size", type=parse_size, default="1", help="e.g. 100k, 5M")
     ap.add_argument("--move-to", help="move duplicates (all but oldest) here")
     a = ap.parse_args(argv)
-    groups = find_dupes(a.dirs, parse_size(a.min_size))
+    groups = find_dupes(a.dirs, a.min_size)
     wasted = 0
     for size, paths in groups:
         wasted += size * (len(paths) - 1)

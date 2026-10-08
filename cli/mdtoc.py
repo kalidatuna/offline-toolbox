@@ -15,17 +15,27 @@ START, END = "<!-- toc -->", "<!-- /toc -->"
 def slug(text, seen):
     s = re.sub(r"[`*_~]|\[([^\]]*)\]\([^)]*\)", lambda m: m.group(1) or "", text).strip().lower()
     s = re.sub(r"[^\w\- ]", "", s).replace(" ", "-")
-    n = seen.get(s, 0)
-    seen[s] = n + 1
-    return s if n == 0 else f"{s}-{n}"
+    candidate, n = s, seen.get(s, 0)
+    while candidate in seen:
+        n += 1
+        candidate = f"{s}-{n}"
+    seen[s] = n
+    seen[candidate] = 0
+    return candidate
 
 
 def headings(md):
-    out, fence, seen = [], False, {}
+    out, fence, seen = [], None, {}
     for line in md.splitlines():
-        if line.lstrip().startswith(("```", "~~~")):
-            fence = not fence
+        marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
         if fence:
+            if (marker and marker.group(1)[0] == fence[0]
+                    and len(marker.group(1)) >= fence[1]
+                    and not marker.group(2).strip()):
+                fence = None
+            continue
+        if marker:
+            fence = (marker.group(1)[0], len(marker.group(1)))
             continue
         m = re.match(r"^(#{1,6})\s+(.+?)\s*#*\s*$", line)
         if m:

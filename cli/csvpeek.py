@@ -5,6 +5,7 @@
 """
 import argparse
 import csv
+import math
 import sys
 from collections import Counter
 from datetime import datetime
@@ -19,8 +20,7 @@ def kind(v):
     except ValueError:
         pass
     try:
-        float(v)
-        return "float"
+        return "float" if math.isfinite(float(v)) else "text"
     except ValueError:
         pass
     if v.lower() in ("true", "false", "yes", "no"):
@@ -34,7 +34,7 @@ def kind(v):
     return "text"
 
 
-def analyze(rows, header):
+def analyze(rows, header, top=3):
     ncol = len(header)
     cols = [[] for _ in range(ncol)]
     ragged = []
@@ -52,7 +52,7 @@ def analyze(rows, header):
             kinds = Counter({"float": sum(kinds.values())})
         main = kinds.most_common(1)[0][0] if kinds else "empty"
         s = {"name": name, "type": main, "mixed": len(kinds) > 1, "nulls": len(vals) - len(filled),
-             "unique": len(set(filled)), "top": Counter(filled).most_common(3)}
+             "unique": len(set(filled)), "top": Counter(filled).most_common(top)}
         if main in ("int", "float") and not s["mixed"]:
             nums = [float(v) for v in filled]
             s.update(min=min(nums), max=max(nums), mean=sum(nums) / len(nums))
@@ -64,7 +64,10 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("file")
     ap.add_argument("--delimiter", default=None)
+    ap.add_argument("--top", type=int, default=3, help="frequent values per column")
     a = ap.parse_args(argv)
+    if a.top < 1:
+        ap.error("--top must be positive")
     with open(a.file, newline="", encoding="utf-8-sig") as f:
         sample = f.read(4096)
         f.seek(0)
@@ -78,7 +81,7 @@ def main(argv=None):
     if not data:
         print("empty file")
         return 1
-    res = analyze(data[1:], data[0])
+    res = analyze(data[1:], data[0], a.top)
     print(f"{res['rows']} rows x {res['cols']} cols | duplicate rows: {res['dupes']} | ragged rows: {len(res['ragged'])}")
     if res["ragged"]:
         print(f"  ragged at lines: {res['ragged'][:10]}{'...' if len(res['ragged']) > 10 else ''}")

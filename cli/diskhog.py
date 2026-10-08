@@ -17,7 +17,7 @@ def human(n):
 
 def tree_sizes(root):
     """Return {dir: total bytes recursively} and list of (size, path) files."""
-    sizes, files = {}, []
+    sizes, files, seen = {}, [], set()
     for dp, dn, fn in os.walk(root, topdown=False):
         total = 0
         for f in fn:
@@ -25,7 +25,12 @@ def tree_sizes(root):
             try:
                 if os.path.islink(p):
                     continue
-                s = os.lstat(p).st_blocks * 512
+                stat = os.lstat(p)
+                identity = (stat.st_dev, stat.st_ino)
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                s = stat.st_blocks * 512
             except OSError:
                 continue
             total += s

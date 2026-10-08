@@ -10,21 +10,31 @@ Without '--' the expense is split among everyone who appears in the file.
 """
 import argparse
 import sys
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation
 
 CENT = Decimal("0.01")
 
 
 def parse(lines):
     expenses, people = [], []
-    for raw in lines:
+    for number, raw in enumerate(lines, 1):
         raw = raw.strip()
         if not raw or raw.startswith("#"):
             continue
-        main, _, share = raw.partition("--")
+        main, separator, share = raw.partition("--")
         toks = main.split()
-        payer, amount = toks[0], Decimal(toks[1])
-        who = [w.strip() for w in share.split(",") if w.strip()] if share else None
+        if len(toks) < 2:
+            raise ValueError(f"line {number}: expected payer and amount")
+        payer = toks[0]
+        try:
+            amount = Decimal(toks[1])
+            if not amount.is_finite() or amount < 0 or amount != amount.quantize(CENT):
+                raise ValueError(f"line {number}: amount must be nonnegative and use whole cents")
+        except InvalidOperation as error:
+            raise ValueError(f"line {number}: invalid decimal amount") from error
+        who = [w.strip() for w in share.split(",") if w.strip()] if separator else None
+        if separator and (not who or len(set(who)) != len(who)):
+            raise ValueError(f"line {number}: specify a nonempty list of unique participants")
         expenses.append((payer, amount, who))
         for n in [payer] + (who or []):
             if n not in people:
@@ -36,12 +46,11 @@ def balances(expenses, people):
     bal = {p: Decimal(0) for p in people}
     for payer, amt, who in expenses:
         who = who or people
-        share = (amt / len(who)).quantize(CENT, ROUND_HALF_UP)
+        cents, remainder = divmod(int(amt / CENT), len(who))
         bal[payer] += amt
-        for w in who:
-            bal[w] -= share
-        # put rounding remainder on the payer so totals stay exact
-        bal[payer] -= amt - share * len(who)
+        # Assign leftover cents to the first beneficiaries in input order.
+        for index, person in enumerate(who):
+            bal[person] -= Decimal(cents + (index < remainder)) * CENT
     return bal
 
 

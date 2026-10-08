@@ -6,6 +6,7 @@
   loanplan.py 300000 6.5 30 --schedule yearly  year-by-year balance table
 """
 import argparse
+import math
 import sys
 
 
@@ -43,8 +44,9 @@ def main(argv=None):
     ap.add_argument("--extra", type=float, default=0.0, help="extra monthly payment")
     ap.add_argument("--schedule", choices=["yearly"])
     a = ap.parse_args(argv)
-    if a.principal <= 0 or a.years <= 0 or a.apr < 0:
-        print("error: principal and years must be > 0, apr >= 0", file=sys.stderr)
+    if (not all(math.isfinite(value) for value in (a.principal, a.apr, a.years, a.extra, a.years * 12))
+            or a.principal <= 0 or a.years * 12 < 1 or a.apr < 0 or a.extra < 0):
+        print("error: use finite values, principal > 0, a term of at least one month, apr >= 0 and extra >= 0", file=sys.stderr)
         return 2
     pmt = payment(a.principal, a.apr, a.years)
     m0, i0, rows0 = simulate(a.principal, a.apr, a.years)
