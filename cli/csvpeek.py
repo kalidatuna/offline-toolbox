@@ -5,6 +5,7 @@
 """
 import argparse
 import csv
+import math
 import sys
 from collections import Counter
 from datetime import datetime
@@ -19,8 +20,7 @@ def kind(v):
     except ValueError:
         pass
     try:
-        float(v)
-        return "float"
+        return "float" if math.isfinite(float(v)) else "text"
     except ValueError:
         pass
     if v.lower() in ("true", "false", "yes", "no"):
