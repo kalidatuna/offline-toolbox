@@ -49,7 +49,8 @@ class T(unittest.TestCase):
         groups = dupefind.find_dupes([self.d])
         self.assertEqual(len(groups), 1)
         self.assertEqual(len(groups[0][1]), 2)
-        code, out = run(dupefind, self.d, "--move-to", os.path.join(self.d, "..", "trash_" + os.path.basename(self.d)))
+        with tempfile.TemporaryDirectory() as trash:
+            code, out = run(dupefind, self.d, "--move-to", trash)
         self.assertIn("1 duplicate groups", out)
         self.assertEqual(len(dupefind.find_dupes([self.d])), 0)
 
@@ -146,13 +147,15 @@ class T(unittest.TestCase):
         p = write(self.d, "r.md", md)
         run(mdtoc, p, "--write")
         run(mdtoc, p, "--write")
-        self.assertEqual(open(p).read().count("<!-- toc -->"), 1)
+        with open(p) as stream:
+            self.assertEqual(stream.read().count("<!-- toc -->"), 1)
 
     def test_tzmeet(self):
         rows = tzmeet.slots(["America/New_York", "Europe/London"], datetime(2026, 11, 2).date(), 9, 17, 60)
         oks = [t.hour for t, _, ok in rows if ok]
         self.assertEqual(oks, [14, 15, 16])  # UTC hours; NY=UTC-5 (DST ended Nov 1), London=UTC+0
-        self.assertEqual(run(tzmeet, "Nope/Zone")[0], 2)
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(run(tzmeet, "Nope/Zone")[0], 2)
 
     def test_pwcheck(self):
         self.assertIn("common", " ".join(pwcheck.assess("password1")["issues"]))
@@ -169,12 +172,13 @@ class T(unittest.TestCase):
                 s.end_headers()
             def log_message(*a): pass
         srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         base = f"http://127.0.0.1:{srv.server_port}"
         self.assertEqual(sitecheck.check(base + "/ok")["problems"], [])
         self.assertEqual(sitecheck.check(base + "/bad")["problems"], ["HTTP 500"])
         self.assertTrue(sitecheck.check("http://127.0.0.1:1", timeout=1)["problems"][0].startswith("unreachable"))
-        srv.shutdown()
 
     def test_splitbill(self):
         exp, people = splitbill.parse(["alice 90 dinner", "bob 30 taxi -- alice,bob", "carol 10 x -- carol,bob"])

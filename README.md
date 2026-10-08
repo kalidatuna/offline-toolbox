@@ -23,7 +23,7 @@ Why these: recurring complaints about online utilities are ads/trackers, uploadi
 | `tzmeet` | Meeting slots inside everyone's working hours across time zones (DST-aware) |
 | `sitecheck` | Batch uptime + TLS-expiry check for cron/CI |
 | `pwcheck` | Offline password strength check and secure generator |
-| `splitbill` | Split shared expenses; fewest payments to settle up (exact decimal math) |
+| `splitbill` | Split shared expenses; suggested payments to settle up (exact decimal math) |
 | `loanplan` | Loan payment, total interest, savings from extra payments |
 
 ## Web (`web/`), open `index.html`
@@ -42,11 +42,13 @@ Why these: recurring complaints about online utilities are ads/trackers, uploadi
 ## Tests
 
 ```bash
-python3 tests/test_cli.py     # 17 CLI tests
+python3 -m unittest discover -s tests -v  # CLI and regression tests
 node tests/test_web.mjs       # logic of the 8 web tools (extracted from each page)
 ```
 
 Web UIs were also smoke-tested in a real browser (no console errors).
+
+GitHub Actions runs the Python suite on Python 3.10 and 3.12, and the browser logic tests on Node.js 22, for pull requests and pushes to `main`.
 
 ## Known limits
 
@@ -55,3 +57,7 @@ Web UIs were also smoke-tested in a real browser (no console errors).
 - `jwtpeek` does not verify signatures by design (no keys). Do not use it as proof a token is valid.
 - `imgtool` "Download all" saves files one by one (no zip library, to stay offline and single-file).
 - `textstats` readability is tuned for English.
+- `bulkrename` refuses destinations that already exist, including another source in the same plan, to avoid overwriting file contents.
+- `diskhog` counts hard-linked data once and attributes it to the first file location visited.
+- `splitbill` requires nonnegative amounts in whole cents and unique participant names. Rounding cents go to the first beneficiaries in input order. Its greedy settlement suggestions do not guarantee the minimum possible number of payments.
+- `pwcheck gen` requires a password length of at least 4; passphrase word counts must be nonnegative.
