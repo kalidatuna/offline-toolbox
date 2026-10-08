@@ -43,9 +43,8 @@ def plan(root, pattern, repl, ext=None, recursive=False, number=0, lower=False, 
 
 def check_conflicts(moves):
     dests = [d for _, d in moves]
-    srcs = {s for s, _ in moves}
     dup = {d for d in dests if dests.count(d) > 1}
-    clash = {d for d in dests if os.path.exists(d) and d not in srcs}
+    clash = {d for d in dests if os.path.lexists(d)}
     return dup | clash
 
 
