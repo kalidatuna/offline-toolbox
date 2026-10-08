@@ -15,9 +15,13 @@ START, END = "<!-- toc -->", "<!-- /toc -->"
 def slug(text, seen):
     s = re.sub(r"[`*_~]|\[([^\]]*)\]\([^)]*\)", lambda m: m.group(1) or "", text).strip().lower()
     s = re.sub(r"[^\w\- ]", "", s).replace(" ", "-")
-    n = seen.get(s, 0)
-    seen[s] = n + 1
-    return s if n == 0 else f"{s}-{n}"
+    candidate, n = s, seen.get(s, 0)
+    while candidate in seen:
+        n += 1
+        candidate = f"{s}-{n}"
+    seen[s] = n
+    seen[candidate] = 0
+    return candidate
 
 
 def headings(md):
