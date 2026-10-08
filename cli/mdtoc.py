@@ -21,11 +21,17 @@ def slug(text, seen):
 
 
 def headings(md):
-    out, fence, seen = [], False, {}
+    out, fence, seen = [], None, {}
     for line in md.splitlines():
-        if line.lstrip().startswith(("```", "~~~")):
-            fence = not fence
+        marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
         if fence:
+            if (marker and marker.group(1)[0] == fence[0]
+                    and len(marker.group(1)) >= fence[1]
+                    and not marker.group(2).strip()):
+                fence = None
+            continue
+        if marker:
+            fence = (marker.group(1)[0], len(marker.group(1)))
             continue
         m = re.match(r"^(#{1,6})\s+(.+?)\s*#*\s*$", line)
         if m:
