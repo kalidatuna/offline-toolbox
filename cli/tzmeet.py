@@ -13,6 +13,13 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 def slots(zones, day, start_h=9, end_h=17, step=60):
     """Return list of (utc_dt, [local_dt...], ok_for_all) across the UTC day (+/-1 for wrap)."""
+    if not zones:
+        raise ValueError("at least one time zone is required")
+    if isinstance(step, bool) or not isinstance(step, int) or step < 1:
+        raise ValueError("step must be a positive integer")
+    if (any(isinstance(hour, bool) or not isinstance(hour, int) for hour in (start_h, end_h))
+            or not 0 <= start_h < end_h <= 24):
+        raise ValueError("working hours must satisfy 0 <= start < end <= 24")
     zs = [ZoneInfo(z) for z in zones]
     base = datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
     out = []
