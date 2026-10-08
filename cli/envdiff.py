@@ -21,8 +21,9 @@ def parse(path):
             m = LINE.match(line)
             if m:
                 v = m.group(2)
-                if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
-                    v = v[1:-1]
+                quoted = re.fullmatch(r"(['\"])(.*?)\1(?:\s+#.*)?", v)
+                if quoted:
+                    v = quoted.group(2)
                 elif " #" in v:
                     v = v.split(" #", 1)[0].rstrip()
                 env[m.group(1)] = v
