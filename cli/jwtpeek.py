@@ -7,6 +7,7 @@ Warns on: expired, not-yet-valid, alg=none, missing exp.
 import argparse
 import base64
 import json
+import math
 import sys
 import time
 from datetime import datetime, timezone
@@ -33,16 +34,22 @@ def decode(token):
 
 
 def analyze(header, payload, now=None):
-    now = now or time.time()
+    now = time.time() if now is None else now
+    for claim in ("iat", "nbf", "exp"):
+        if claim in payload:
+            value = payload[claim]
+            if (isinstance(value, bool) or not isinstance(value, (int, float))
+                    or (isinstance(value, float) and not math.isfinite(value))):
+                raise ValueError(f"{claim} must be a finite numeric date")
     warns = []
     if str(header.get("alg", "")).lower() == "none":
         warns.append("alg=none: token is unsigned")
     exp, nbf = payload.get("exp"), payload.get("nbf")
     if exp is None:
-        warns.append("no exp claim: token never expires")
-    elif exp < now:
+        warns.append("no exp claim: expiration is unspecified")
+    elif exp <= now:
         warns.append(f"EXPIRED {int(now - exp)}s ago")
-    if nbf and nbf > now:
+    if nbf is not None and nbf > now:
         warns.append(f"not valid yet (nbf in {int(nbf - now)}s)")
     return warns
 
@@ -54,15 +61,16 @@ def main(argv=None):
     tok = sys.stdin.read() if a.token == "-" else a.token
     try:
         header, payload = decode(tok)
-    except ValueError as e:
+        warns = analyze(header, payload)
+        dates = [(key, datetime.fromtimestamp(payload[key], timezone.utc).isoformat())
+                 for key in ("iat", "nbf", "exp") if key in payload]
+    except (ValueError, OverflowError, OSError) as e:
         print("error:", e, file=sys.stderr)
         return 2
     print("HEADER ", json.dumps(header, indent=2))
     print("PAYLOAD", json.dumps(payload, indent=2))
-    for k in ("iat", "nbf", "exp"):
-        if isinstance(payload.get(k), (int, float)):
-            print(f"{k}: {datetime.fromtimestamp(payload[k], timezone.utc).isoformat()}")
-    warns = analyze(header, payload)
+    for key, date in dates:
+        print(f"{key}: {date}")
     for w in warns:
         print("WARN:", w)
     return 1 if warns else 0
