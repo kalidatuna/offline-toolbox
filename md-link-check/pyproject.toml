@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "md-link-check"
+version = "0.1.0"
+description = "Offline checks for relative links and anchors in Markdown files"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+
+[project.scripts]
+md-link-check = "md_link_check.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["md_link_check*"]

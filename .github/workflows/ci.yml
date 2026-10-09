@@ -36,3 +36,25 @@ jobs:
           node-version: '22'
           package-manager-cache: false
       - run: node tests/test_web.mjs
+
+  md-link-check:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.10', '3.12']
+    defaults:
+      run:
+        working-directory: md-link-check
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m unittest discover -s tests -v
+      - name: Check this repository's Markdown links
+        run: python -m md_link_check ..
